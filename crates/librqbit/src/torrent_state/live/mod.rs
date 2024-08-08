@@ -560,9 +560,8 @@ impl TorrentStateLive {
     }
 
     pub(crate) fn add_peer_if_not_seen(&self, addr: SocketAddr) -> anyhow::Result<bool> {
-        match self.peers.add_if_not_seen(addr) {
-            Some(handle) => handle,
-            None => return Ok(false),
+        if let None = self.peers.add_if_not_seen(addr) {
+            return Ok(false);
         };
 
         self.peer_queue_tx.send(addr)?;

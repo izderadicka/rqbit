@@ -16,7 +16,7 @@ use librqbit::{
     PeerConnectionOptions, Session, SessionOptions, TorrentStatsState,
 };
 use size_format::SizeFormatterBinary as SF;
-use tracing::{error, error_span, info, trace_span, warn};
+use tracing::{debug, error, error_span, info, trace_span, warn};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum LogLevel {
@@ -365,7 +365,7 @@ async fn async_main(opts: Opts) -> anyhow::Result<()> {
                             None => String::new()
                         };
                         let peer_stats = &live_stats.snapshot.peer_stats;
-                        info!(
+                        debug!(
                             "[{}]: {:.2}% ({:.2} / {:.2}), ↓{:.2} MiB/s, ↑{:.2} MiB/s ({:.2}){}, {{live: {}, queued: {}, dead: {}, known: {}}}",
                             idx,
                             downloaded_pct,

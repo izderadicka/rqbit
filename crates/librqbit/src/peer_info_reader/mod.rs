@@ -15,7 +15,7 @@ use peer_binary_protocol::{
 };
 use sha1w::{ISha1, Sha1};
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::trace;
+use tracing::{info, trace};
 
 use crate::{
     peer_connection::{
@@ -202,6 +202,10 @@ impl PeerConnectionHandler for Handler {
         &self,
         extended_handshake: &ExtendedHandshake<ByteBuf>,
     ) -> anyhow::Result<()> {
+        info!(
+            ">Got extended handshake from {} containing {:?}",
+            self.addr, extended_handshake,
+        );
         let metadata_size = match extended_handshake.metadata_size {
             Some(metadata_size) => metadata_size,
             None => anyhow::bail!("peer does not have metadata_size"),

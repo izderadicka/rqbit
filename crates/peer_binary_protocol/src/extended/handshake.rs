@@ -51,6 +51,7 @@ impl<ByteBuf: Eq + std::hash::Hash> ExtendedHandshake<ByteBuf> {
     where
         ByteBuf: AsRef<[u8]>,
     {
+        // return self.m.get(msg_type).map(|v| *v);
         self.m.iter().find_map(|(k, v)| {
             if k.as_ref() == msg_type {
                 Some(*v)

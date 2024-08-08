@@ -329,7 +329,7 @@ impl ManagedTorrent {
                     g.only_files.clone(),
                     self.storage_factory.create_and_init(self.info())?,
                 ));
-                g.state = ManagedTorrentState::Initializing(initializing.clone());
+                g.state = ManagedTorrentState::Initializing(initializing);
                 self.state_change_notify.notify_waiters();
                 drop(g);
 

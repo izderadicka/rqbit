@@ -687,6 +687,8 @@ impl Session {
             };
 
             let handshake = h.clone_to_owned();
+            let peer_id_str = std::str::from_utf8(&handshake.peer_id[..7]).unwrap_or("non-utf");
+            info!("Got handshake {handshake:?} from peer {}", peer_id_str);
 
             return Ok((
                 live,
