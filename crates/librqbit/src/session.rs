@@ -49,7 +49,10 @@ use librqbit_core::{
 use parking_lot::RwLock;
 use peer_binary_protocol::Handshake;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    task::spawn_blocking,
+};
 use tokio_stream::StreamExt;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::{debug, error, error_span, info, trace, warn, Instrument};
@@ -609,7 +612,7 @@ impl Session {
                 Some(s) => s,
                 None => break,
             };
-            if let Err(e) = session.dump_to_disk() {
+            if let Err(e) = session.dump_to_disk().await {
                 error!("error dumping session to disk: {:?}", e);
             }
         }
@@ -820,24 +823,31 @@ impl Session {
         Ok(())
     }
 
-    fn dump_to_disk(&self) -> anyhow::Result<()> {
+    async fn dump_to_disk(&self) -> anyhow::Result<()> {
         let tmp_filename = format!("{}.tmp", self.persistence_filename.to_str().unwrap());
-        let mut tmp = BufWriter::new(
-            std::fs::OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(&tmp_filename)
-                .with_context(|| format!("error opening {:?}", tmp_filename))?,
-        );
+        let persistence_filename = self.persistence_filename.clone();
         let serialized = self.db.read().serialize();
-        serde_json::to_writer(&mut tmp, &serialized).context("error serializing")?;
-        drop(tmp);
 
-        std::fs::rename(&tmp_filename, &self.persistence_filename)
-            .context("error renaming persistence file")?;
+        let res = spawn_blocking(move || {
+            let mut tmp = BufWriter::new(
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(true)
+                    .write(true)
+                    .open(&tmp_filename)
+                    .with_context(|| format!("error opening {:?}", tmp_filename))?,
+            );
+
+            serde_json::to_writer(&mut tmp, &serialized).context("error serializing")?;
+            drop(tmp);
+
+            std::fs::rename(&tmp_filename, persistence_filename)
+                .context("error renaming persistence file")?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await;
         trace!(filename=?self.persistence_filename, "wrote persistence");
-        Ok(())
+        res?
     }
 
     /// Run a callback given the currently managed torrents.
