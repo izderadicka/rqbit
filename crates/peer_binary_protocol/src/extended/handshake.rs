@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
@@ -46,26 +47,22 @@ impl ExtendedHandshake<ByteBuf<'static>> {
     }
 }
 
-impl<ByteBuf: Eq + std::hash::Hash> ExtendedHandshake<ByteBuf> {
-    pub fn get_msgid(&self, msg_type: &[u8]) -> Option<u8>
+impl<ByteBuf: Eq + std::hash::Hash> ExtendedHandshake<ByteBuf>
+where
+    [u8]: AsRef<ByteBuf>,
+{
+    pub fn get_msgid<K>(&self, msg_type: &K) -> Option<u8>
     where
-        ByteBuf: AsRef<[u8]>,
+        K: AsRef<ByteBuf> + ?Sized,
     {
-        // return self.m.get(msg_type).map(|v| *v);
-        self.m.iter().find_map(|(k, v)| {
-            if k.as_ref() == msg_type {
-                Some(*v)
-            } else {
-                None
-            }
-        })
+        return self.m.get(msg_type.as_ref()).map(|v| *v);
     }
 
     pub fn ut_metadata(&self) -> Option<u8>
     where
         ByteBuf: AsRef<[u8]>,
     {
-        self.get_msgid(b"ut_metadata")
+        self.get_msgid(&b"ut_metadata"[..])
     }
 }
 
