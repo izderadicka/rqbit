@@ -170,22 +170,13 @@ impl HttpApi {
             host: &str,
             it: impl IntoIterator<Item = (usize, usize, String)>,
         ) -> impl IntoResponse {
-            let body = it
-                .into_iter()
-                .map(|(torrent_idx, file_idx, filename)| {
+            let body = std::iter::once("#EXTM3U".to_string())
+                .chain(it.into_iter().map(|(torrent_idx, file_idx, filename)| {
                     format!("http://{host}/torrents/{torrent_idx}/stream/{file_idx}/{filename}")
-                })
+                }))
                 .join("\r\n");
             (
-                if cfg!(any(target_os = "macos", target_os = "ios")) {
-                    [(
-                        "Content-Type",
-                        "application/vnd.apple.mpegurl; charset=utf-8",
-                    )]
-                } else {
-                    // apple mime does not work with VLC on linux
-                    [("Content-Type", "text/plain; charset=utf-8")]
-                },
+                [("Content-Type", "application/mpegurl; charset=utf-8")],
                 body,
             )
         }
@@ -388,8 +379,8 @@ impl HttpApi {
             .route("/torrents/:id/stats/v1", get(torrent_stats_v1))
             .route("/torrents/:id/peer_stats", get(peer_stats))
             .route("/torrents/:id/stream/:file_id", get(torrent_stream_file))
-            .route("/torrents/:id/playlist", get(torrent_playlist))
-            .route("/torrents/playlist", get(global_playlist))
+            .route("/torrents/:id/playlist.m3u8", get(torrent_playlist))
+            .route("/torrents/playlist.m3u8", get(global_playlist))
             .route(
                 "/torrents/:id/stream/:file_id/*filename",
                 get(torrent_stream_file),
