@@ -830,7 +830,8 @@ impl<'a> PeerConnectionHandler for &'a PeerHandler {
         self.state.file_ops().read_chunk(self.addr, chunk, buf)
     }
 
-    fn on_extended_handshake(&self, _: &ExtendedHandshake<ByteBuf>) -> anyhow::Result<()> {
+    fn on_extended_handshake(&self, h: &ExtendedHandshake<ByteBuf>) -> anyhow::Result<()> {
+        info!("live: received extended handshake: {:?}", h);
         Ok(())
     }
 

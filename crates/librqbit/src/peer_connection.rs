@@ -20,7 +20,7 @@ use peer_binary_protocol::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use tokio::time::timeout;
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use crate::{read_buf::ReadBuf, spawn_utils::BlockingSpawner, stream_connect::StreamConnector};
 
@@ -181,6 +181,7 @@ impl<H: PeerConnectionHandler> PeerConnection<H> {
 
         let mut write_buf = Vec::<u8>::with_capacity(PIECE_MESSAGE_DEFAULT_LEN);
         let handshake = Handshake::new(self.info_hash, self.peer_id);
+        info!("Sending handshake: {:?} to {}", handshake, self.addr);
         handshake.serialize(&mut write_buf);
         with_timeout(rwtimeout, conn.write_all(&write_buf))
             .await
@@ -241,7 +242,7 @@ impl<H: PeerConnectionHandler> PeerConnection<H> {
         if supports_extended {
             let my_extended =
                 Message::Extended(ExtendedMessage::Handshake(ExtendedHandshake::new()));
-            trace!("sending extended handshake: {:?}", &my_extended);
+            info!("sending extended handshake: {:?}", &my_extended);
             my_extended.serialize(&mut write_buf, &|| None).unwrap();
             with_timeout(rwtimeout, conn.write_all(&write_buf))
                 .await
