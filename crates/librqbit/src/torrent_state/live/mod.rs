@@ -137,6 +137,8 @@ pub(crate) struct TorrentStateLocked {
     fatal_errors_tx: Option<tokio::sync::oneshot::Sender<anyhow::Error>>,
 
     unflushed_bitv_bytes: u64,
+
+    cancel_retries: CancellationToken,
 }
 
 impl TorrentStateLocked {
@@ -252,6 +254,7 @@ impl TorrentStateLive {
                 file_priorities,
                 fatal_errors_tx: Some(fatal_errors_tx),
                 unflushed_bitv_bytes: 0,
+                cancel_retries: cancellation_token.child_token(),
             }),
             files: paused.files,
             stats: AtomicStats {
@@ -757,6 +760,10 @@ impl TorrentStateLive {
             self.finished_notify.notify_waiters();
 
             if !self.has_active_streams_unfinished_files(locked) {
+                // can cancel retries of dead peers
+                g.cancel_retries.cancel();
+                g.cancel_retries = self.cancellation_token.child_token();
+                debug!("Canceled dead peers retries");
                 // prevent deadlocks.
                 drop(g);
                 // There is not poing being connected to peers that have all the torrent, when
@@ -790,6 +797,20 @@ impl TorrentStateLive {
                 return;
             }
         }
+        // TODO: What about also to retry dead peers - probably with some initial delay
+        let c = self
+            .peers
+            .states
+            .iter()
+            .filter(|p| {
+                matches!(p.state.get(), PeerState::Dead)
+                    && p.stats
+                        .counters
+                        .downloaded_and_checked_bytes
+                        .load(Ordering::Relaxed) >0
+            })
+            .count();
+        debug!("We also have {} dead peers, that we might try", { c });
     }
 }
 
@@ -1035,13 +1056,15 @@ impl PeerHandler {
         drop(pe);
 
         if let Some(dur) = backoff {
-            self.state.clone().spawn(
+            let cancellation_token = self.state.locked.read().cancel_retries.clone();
+            spawn_with_cancel(
                 error_span!(
                     parent: self.state.torrent.span.clone(),
                     "wait_for_peer",
                     peer = handle.to_string(),
                     duration = format!("{dur:?}")
                 ),
+                cancellation_token,
                 async move {
                     trace!("waiting to reconnect again");
                     tokio::time::sleep(dur).await;
