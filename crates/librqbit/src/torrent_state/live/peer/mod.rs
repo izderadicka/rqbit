@@ -2,6 +2,7 @@ pub mod stats;
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::time;
 
 use librqbit_core::hash_id::Id20;
 use librqbit_core::lengths::ChunkInfo;
@@ -31,9 +32,12 @@ impl Peer {
         tx: PeerTx,
         counters: &[&AggregatePeerStatsAtomic],
     ) -> Self {
-        let state = PeerStateNoMut(PeerState::Live(LivePeerState::new(peer_id, tx, true)));
+        let state = PeerStateNoMut {
+            state: PeerState::Live(LivePeerState::new(peer_id, tx, true)),
+            time_changed: Some(time::Instant::now()),
+        };
         for counter in counters {
-            counter.inc(&state.0);
+            counter.inc(&state.state);
         }
         Self {
             state,
@@ -117,11 +121,14 @@ impl PeerState {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct PeerStateNoMut(PeerState);
+pub(crate) struct PeerStateNoMut {
+    state: PeerState,
+    time_changed: Option<time::Instant>,
+}
 
 impl PeerStateNoMut {
     pub fn get(&self) -> &PeerState {
-        &self.0
+        &self.state
     }
 
     pub fn take(&mut self, counters: &[&AggregatePeerStatsAtomic]) -> PeerState {
@@ -130,26 +137,32 @@ impl PeerStateNoMut {
 
     pub fn destroy(self, counters: &[&AggregatePeerStatsAtomic]) {
         for counter in counters {
-            counter.dec(&self.0);
+            counter.dec(&self.state);
         }
     }
 
     pub fn set(&mut self, new: PeerState, counters: &[&AggregatePeerStatsAtomic]) -> PeerState {
         for counter in counters {
-            counter.incdec(&self.0, &new);
+            counter.incdec(&self.state, &new);
         }
-        std::mem::replace(&mut self.0, new)
+        self.time_changed = Some(time::Instant::now());
+        std::mem::replace(&mut self.state, new)
+       
+    }
+
+    pub fn is_live(&self) -> bool {
+        matches!(&self.state, PeerState::Live(_))
     }
 
     pub fn get_live(&self) -> Option<&LivePeerState> {
-        match &self.0 {
+        match &self.state {
             PeerState::Live(l) => Some(l),
             _ => None,
         }
     }
 
     pub fn get_live_mut(&mut self) -> Option<&mut LivePeerState> {
-        match &mut self.0 {
+        match &mut self.state {
             PeerState::Live(l) => Some(l),
             _ => None,
         }
@@ -159,7 +172,7 @@ impl PeerStateNoMut {
         &mut self,
         counters: &[&AggregatePeerStatsAtomic],
     ) -> Option<(PeerRx, PeerTx)> {
-        match &self.0 {
+        match &self.state {
             PeerState::Queued | PeerState::NotNeeded => {
                 let (tx, rx) = unbounded_channel();
                 let tx_2 = tx.clone();
@@ -176,7 +189,7 @@ impl PeerStateNoMut {
         tx: PeerTx,
         counters: &[&AggregatePeerStatsAtomic],
     ) -> anyhow::Result<()> {
-        if matches!(&self.0, PeerState::Connecting(..) | PeerState::Live(..)) {
+        if matches!(&self.state, PeerState::Connecting(..) | PeerState::Live(..)) {
             anyhow::bail!("peer already active");
         }
         match self.take(counters) {
@@ -196,7 +209,7 @@ impl PeerStateNoMut {
         peer_id: Id20,
         counters: &[&AggregatePeerStatsAtomic],
     ) -> Option<&mut LivePeerState> {
-        if let PeerState::Connecting(_) = &self.0 {
+        if let PeerState::Connecting(_) = &self.state {
             let tx = match self.take(counters) {
                 PeerState::Connecting(tx) => tx,
                 _ => unreachable!(),
